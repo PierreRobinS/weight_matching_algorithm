@@ -15,11 +15,12 @@ data_path = "../input/"
 
 
 
-file_name = data_path + "grid21.in"
+file_name = data_path + "grid11.in"
 grid = Grid.grid_from_file(file_name, False)
 grid.plot()
 
-
+graph_grid = BipartiteGraph(grid)
+graph_grid.plot()
 
 
 solver = SolverFordFulkerson(grid)
