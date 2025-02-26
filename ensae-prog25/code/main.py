@@ -1,5 +1,6 @@
 from grid import Grid
 from solver import *
+from graph import *
 import os
 import numpy as np
 import matplotlib.pyplot as plt
@@ -12,12 +13,24 @@ os.chdir(script_dir)
 
 data_path = "../input/"
 
-file_name = data_path + "grid00.in"
-grid = Grid.grid_from_file(file_name, True)
-print(grid)
-solver = SolverGreedyEasy(grid)
-solver.run_real()
+
+
+file_name = data_path + "grid21.in"
+grid = Grid.grid_from_file(file_name, False)
+grid.plot()
+
+
+
+
+solver = SolverFordFulkerson(grid)
+solver.run()
 print("liste de paires : ", solver.pairs, "\n", "score : ", solver.score(solver.pairs))
+
+
+
+
+
+
 
 """file_name = data_path + "grid11.in"
 grid = Grid.grid_from_file(file_name, read_values=True)
