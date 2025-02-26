@@ -1,9 +1,6 @@
 """
 This is the grid module. It contains the Grid class and its associated methods.
 """
-import matplotlib.pyplot as plt
-from matplotlib.colors import LinearSegmentedColormap
-import numpy as np
 
 class Grid():
     """
@@ -56,7 +53,7 @@ class Grid():
         if not value:
             value = [[1 for j in range(m)] for i in range(n)]            
         self.value = value
-        self.colors_list = ['w', 'r', 'b', 'g', 'k', 'A']
+        self.colors_list = ['w', 'r', 'b', 'g', 'k', 'X']
         self.coordinates = [[(i,j) for j in range(m)] for i in range(n)]
         self.mark = [[False for j in range(m)] for i in range(n)]
 
@@ -78,22 +75,51 @@ class Grid():
         """
         return f"<grid.Grid: n={self.n}, m={self.m}>"
 
-    def plot(self): 
+    def plot(self):
         """
-        Plots a visual representation of the grid.
+        Displays the grid using matplotlib.
+        
+        - Each cell is rendered as a square.
+        - The mapping is:
+            0 -> white,
+            1 -> red,
+            2 -> blue,
+            3 -> green,
+            4 -> black.
+        - Cells with value 5 (forbidden cells) are drawn with the background 
+        (here white) but an 'X' is overlaid to indicate that the cell is forbidden.
         """
+        import matplotlib.pyplot as plt
+        import numpy as np
+        from matplotlib.colors import ListedColormap
 
-        custom_colors = ['#00ff00', 'red', 'black', 'white', 'blue']
-        custom_cmap = LinearSegmentedColormap.from_list("cmap_perso", custom_colors)
+        print(self.color)
 
-        plt.pcolor(self.color, cmap=custom_cmap)
+        # Define a colormap for the allowed color codes.
+        cmap = ListedColormap(['white', 'red', 'blue', 'green', 'black'])
+
+        fig, ax = plt.subplots()
+        # Use imshow to display the grid matrix.
+        # Set interpolation='none' so that each cell is a block.
+        im = ax.imshow(self.color, cmap=cmap, interpolation='none', origin='upper', vmin=-0.5, vmax=4.5)
+        ax.set_aspect('equal')
+
+        # Draw minor ticks to delineate the grid cells.
+        ax.set_xticks(np.arange(-0.5, self.m, 1), minor=True)
+        ax.set_yticks(np.arange(-0.5, self.n, 1), minor=True)
+        ax.grid(which='minor', color='gray', linestyle='-', linewidth=1)
+        ax.tick_params(which="minor", bottom=False, left=False)
+
+        # Optionally hide major tick labels.
+        ax.set_xticks([])
+        ax.set_yticks([])
+        
         plt.show()
 
-        # TODO
 
     def is_forbidden(self, i, j):
         """
-        Returns True is the cell (i, j) is black and False otherwise
+        Returns True is the cell (i, j) is black or marked as forbidden (cf SolverGreedy) and False otherwise
         """
         return self.color[i][j]==4 or self.color[i][j]==5
         
@@ -131,9 +157,11 @@ class Grid():
     
     def local_pairs_dr(self, i, j):
         """
-        Returns a list of all pairs than we can build from a given cell and the right and lower cell 
-        Outputs a list of tuples of tuples [(c1, c2), (c1', c2'), ...] where each cell c1 etc. is itself a tuple (i, j)
-        NB : returns on
+        Returns a list of all pairs that can be build from a given cell and the cells at its right and bottom.
+
+        Outputs a list of tuples of tuples [((c1, c2), (c1', c2')), ...] where each cell c1 etc. is itself a tuple (i, j)
+
+        NB : returns at most two pairs (the one with the lower cell and with the cell at the right)
         """
         n = self.n
         m = self.m
@@ -163,7 +191,6 @@ class Grid():
         m = self.m
         for i in range(n):
             for j in range(m):
-                #print("i : "  + str(i) + " and j : " + str(j))
                 cell_pairs = self.local_pairs_dr(i,j)
                 if cell_pairs != []:
                     for pair in cell_pairs:
