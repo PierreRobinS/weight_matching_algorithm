@@ -1,4 +1,6 @@
 import itertools
+from collections import deque
+from graph import *
 
 class Solver:
     """
@@ -20,19 +22,14 @@ class Solver:
         -----------
         grid: Grid
             The grid
-
-        Items:
-        ------
-        self.mark = (list(list(list(int)))) ist a cube of booleans to
         """
         self.grid = grid
         self.pairs = list()
-        self.mark = dict()
 
     def score(self, pair_list):
         """
-        Computes the score of thea list of pairs
-        If there is some cases that don't match with any others, then it adds the value associated
+        Computes the score of the list of pairs
+        If there are some cases that don't match with any others, then it adds the value associated
         """
         S = 0
         involved_cases = list()
@@ -50,7 +47,16 @@ class SolverEmpty(Solver):
     def run(self):
         pass
 
-class SolverTotal(Solver):
+class SolverGreedy1(Solver):
+    """
+    A first very (very) greedy solver that find the best solution to the problem. Complexity about o(2^n)
+    
+    Works as following:
+    - Computes the power set of self.grid.all_pairs()
+    - Excludes all subsets of pairs that are illegals. For instance a cell can be 
+    involved in two different pairs in the previous powerset.
+    - Gets the subset with the lowest score.
+    """
 
     def power_set(self, lst):
         """
@@ -105,7 +111,7 @@ class SolverTotal(Solver):
         return all_legal_pair_lists[0]
     
 
-class SolverGreedy(Solver):
+class SolverGreedy2(Solver):
 
     #def __init__(self, grid):
 
@@ -131,7 +137,7 @@ class SolverGreedy(Solver):
         else:
             return None
 
-    def run_real(self):
+    def run(self):
         """
         A greedy algorithm to try to solve the posed problem.
         It has some difficulties to find the best solution, but its results are correct and it is very much faster than the total solver.
@@ -142,14 +148,15 @@ class SolverGreedy(Solver):
             - If the cell is black, it goes to the next.
             - Else, if the cell admit pairs, it computes the best pair associated with compute_min_dr()
             - It computes again the best pair with the cell already involved in the former pair.
-            # PROBLEM NOT YET SOLVED : both pairs for a given cell can have the same cost, then compute_min_dr() chooses one pair randomly.
+            # PROBLEM NOT YET SOLVED : both pairs (if they exist) for a given cell can have the same cost, 
+            then compute_min_dr() chooses one pair randomly.
                 - If there is no second pair, it adds the first one to self.pairs()
                 - If both pairs are the same, then there is a match. It adds it to self.pairs()
                 # PROBLEM NOT YET SOLVED : if the second cell admit another pair with an equal cost with the former one,
                 the code actually chooses the first pair, even if it is not the best option.
                 - If not, it runs the algorithm again (recursivity) to find the best pair of the second cell.
             - When one of the two first cases appears, the algorithm marks the cells with the color 5 to do not loop indefinitely.
-            (The last steps works bc it is not possible to create pair with a color that is not in the rules of the game.)
+            (The last steps works bc the color 5 is added to the is_forbidden() method in self.grid.)
 
         Axes the improve the algorithm:
         -------------------------------
@@ -172,13 +179,15 @@ class SolverGreedy(Solver):
                             self.pairs.append(min_pair_1[0])
                         # If there is no second pair, it adds the first one to self.pairs()
                         else:
+                            # If there is a second pair.
                             if min_pair_1[1] <= min_pair_2[1]:
                                 for cell in min_pair_1[0]:
                                     self.grid.color[cell[0]][cell[1]] = 5
                                 self.pairs.append(min_pair_1[0])
-                            # When there is a match. (Problem : using the '<=' symbol)
+                            # When there is a match. (Problem : using the '<=' symbol, the code should separate '=' and '<' cases.)
                             else:
-                                self.run_real()
+                                self.grid.color[i][j] = 5
+                                self.run()
                                 # When there is not.
                     else:
                         self.grid.color[i][j] = 5
@@ -186,3 +195,87 @@ class SolverGreedy(Solver):
 
 
 
+class SolverFordFulkerson(Solver):
+    
+    def find_path_BFS(self, residual, source, sink):
+        """
+        Searches for an augmenting path in the residual graph using BFS.
+        Returns a pair (path, parent):
+            - path: list of edges in the form [(u, v), ...] going from source to sink,
+            or None if no path exists.
+            - parent: array indicating for each vertex the predecessor in the found path.
+        """
+        n = len(residual)
+        visited = [False] * n
+
+        parent = [-1] * n
+        queue = deque()
+
+        visited[source] = True
+        queue.append(source)
+        while queue:
+            u = queue.popleft()
+            for v in range(n):
+                if not visited[v] and residual[u][v] > 0:
+                    visited[v] = True
+                    parent[v] = u
+                    queue.append(v)
+                    if v == sink:
+                        # We have reached the sink; we can reconstruct the path
+                        return self.build_path(parent, source, sink), parent
+        return None, parent
+    
+    def build_path(self, parent, source, sink):
+        """
+        Reconstructs the path from source to sink using the parent array.
+        Returns the list of edges [(u, v), ...].
+        """
+        path = []
+        v = sink
+        while v != source:
+            u = parent[v]
+            path.insert(0, (u, v))
+            v = u
+        return path
+    
+    def run(self):
+        grid_graph = BipartiteGraph(self.grid)
+
+        source = grid_graph.n - 2
+        sink = grid_graph.n - 1
+
+        residual = [row[:] for row in grid_graph.adj_matrix]
+        max_flow = 0
+
+        # Use DFS to find an augmenting path
+        while True:
+            path, parent = self.find_path_BFS(residual, source, sink)
+            if path is None:
+                break
+            flow = 1  # Unit capacity
+            v = sink
+            while v != source:
+                u = parent[v]
+                residual[u][v] -= flow
+                residual[v][u] += flow
+                v = u
+            max_flow += flow
+
+        # Extract pairs from the residual matrix
+        # Iterate over the vertices corresponding to cells (0 to grid.n*grid.m - 1)
+        for u in range(grid_graph.n - 2):  # excluding source and sink
+            # Consider only the vertices of the left part
+            # Here, we assume that grid_graph.id_cell[u][0] gives the cell coordinate and
+            # that (i+j) even indicates the left part.
+            cell_u = grid_graph.id_cell[u][0]
+            if (cell_u[0] + cell_u[1]) % 2 == 0:  # left part
+                # For each neighbor v of u
+                for v in range(grid_graph.n - 2):
+                    # Check that we have an initial edge and that this edge has been saturated
+                    if grid_graph.adj_matrix[u][v] == 1 and residual[u][v] == 0:
+                        cell_v = grid_graph.id_cell[v][0]
+                        self.pairs.append((cell_u, cell_v))
+                        break  # Each left cell can be paired with only one cell
+
+        print("Maximum flow:", max_flow)
+        return max_flow
