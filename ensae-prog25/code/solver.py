@@ -26,9 +26,20 @@ class Solver:
         self.grid = grid
         self.pairs = list()
 
+    def __str__(self):
+        """
+        Thought to display the results of the solver after the run() method present in each was called.
+        """
+        output = "The pairs found are : \n"
+        for pair in self.pairs:
+            str_pair = str(pair)
+            output += str_pair + "\n"
+        output += "\nAnd the score is : " + str(self.score(self.pairs))
+        return output
+
     def score(self, pair_list):
         """
-        Computes the score of the list of pairs
+        Computes the score of the given list of pairs.
         If there are some cases that don't match with any others, then it adds the value associated
         """
         S = 0
@@ -95,8 +106,8 @@ class SolverGreedy1(Solver):
 
         This last one works as following :
             - Computing all the subsets from the all_pair() list.
-            - Takes only the legal ones the reject the other
-            - Sort all the legal list 
+            - Takes only the legal ones and rejects the others
+            - Sort all the legal lists
         """
         def sort_key(lst):
                 return lst[1]
@@ -107,13 +118,11 @@ class SolverGreedy1(Solver):
             if self.is_legal(lst) == True:
                 all_legal_pair_lists.append((lst, self.score(lst)))
         all_legal_pair_lists.sort(key=sort_key)
-        self.pairs = all_legal_pair_lists[0]
+        self.pairs = all_legal_pair_lists[0][0]
         return all_legal_pair_lists[0]
     
 
 class SolverGreedy2(Solver):
-
-    #def __init__(self, grid):
 
     def compute_min_dr(self, i, j):
         """
@@ -174,7 +183,6 @@ class SolverGreedy2(Solver):
                         # If the cell (i,j) admit pairs, it computes the bests pairs
                         if min_pair_2 == None:
                             for cell in min_pair_1[0]:
-                                print((cell[0], cell[1]), self.grid)
                                 self.grid.color[cell[0]][cell[1]] = 5
                             self.pairs.append(min_pair_1[0])
                         # If there is no second pair, it adds the first one to self.pairs()
@@ -239,6 +247,12 @@ class SolverFordFulkerson(Solver):
         return path
     
     def run(self):
+        """
+        This method runs the algorithm to solve the problem.
+
+        Returns max_flox (int) which is the maximum flow found associated to graph problem.
+        The best pair list is stocked in self.pairs().
+        """
         grid_graph = BipartiteGraph(self.grid)
 
         source = grid_graph.n - 2
@@ -247,7 +261,7 @@ class SolverFordFulkerson(Solver):
         residual = [row[:] for row in grid_graph.adj_matrix]
         max_flow = 0
 
-        # Use DFS to find an augmenting path
+        # Use BFS to find an augmenting path
         while True:
             path, parent = self.find_path_BFS(residual, source, sink)
             if path is None:
@@ -277,5 +291,4 @@ class SolverFordFulkerson(Solver):
                         self.pairs.append((cell_u, cell_v))
                         break  # Each left cell can be paired with only one cell
 
-        print("Maximum flow:", max_flow)
         return max_flow
