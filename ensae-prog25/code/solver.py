@@ -1,6 +1,7 @@
 import itertools
 from collections import deque
 from graph import *
+from hungarian import *
 
 class Solver:
     """
@@ -58,7 +59,11 @@ class SolverEmpty(Solver):
     def run(self):
         pass
 
-class SolverGreedy1(Solver):
+# ------------------------------------------------------------------
+# A Brute Force Method
+# ------------------------------------------------------------------
+
+class SolverBruteForce(Solver):
     """
     A first very (very) greedy solver that find the best solution to the problem. Complexity about o(2^n)
     
@@ -121,8 +126,11 @@ class SolverGreedy1(Solver):
         self.pairs = all_legal_pair_lists[0][0]
         return all_legal_pair_lists[0]
     
+# ------------------------------------------------------------------
+# A greedy Method
+# ------------------------------------------------------------------
 
-class SolverGreedy2(Solver):
+class SolverGreedy(Solver):
 
     def compute_min_dr(self, i, j):
         """
@@ -200,95 +208,278 @@ class SolverGreedy2(Solver):
                     else:
                         self.grid.color[i][j] = 5
 
-
-
+# ------------------------------------------------------------------
+# Ford-Fulkerson Method
+# ------------------------------------------------------------------
 
 class SolverFordFulkerson(Solver):
-    
-    def find_path_BFS(self, residual, source, sink):
-        """
-        Searches for an augmenting path in the residual graph using BFS.
-        Returns a pair (path, parent):
-            - path: list of edges in the form [(u, v), ...] going from source to sink,
-            or None if no path exists.
-            - parent: array indicating for each vertex the predecessor in the found path.
-        """
-        n = len(residual)
-        visited = [False] * n
+    """
+    Solver class that builds a bipartite graph from a grid, computes a maximum matching 
+    using the Ford-Fulkerson algorithm (via Edmonds-Karp BFS), and stores the matching 
+    pairs in the 'pairs' attribute.
+    """
 
-        parent = [-1] * n
-        queue = deque()
+    def __init__(self, grid):
+        """
+        Initializes the solver with a given grid.
 
-        visited[source] = True
-        queue.append(source)
+        Args:
+            grid: The grid data structure from which the bipartite graph is constructed.
+        """
+        super().__init__(grid)
+
+    def run(self):
+        """
+        Executes the matching algorithm. The method performs the following steps:
+        
+        1. Builds the bipartite graph from the grid and initializes the capacity and 
+           residual graphs.
+        2. Uses BFS to repeatedly find augmenting paths and updates the residual graph.
+        3. Extracts the saturated edges (i.e., those used in the matching) from the flow.
+        4. Converts the saturated edges into grid cell pairs and stores the result in 
+           the 'pairs' attribute.
+        """
+        self.G = SSBipartiteGraph(self.grid)
+        self.source = self.G.n - 2  # Source vertex
+        self.sink = self.G.n - 1    # Sink vertex
+
+        self.capacity, self.residual = self._initialize_graphs()
+
+        while True:
+            path = self._bfs_find_path()
+            if path is None:
+                break
+            self._update_flow(path)
+
+        used_edges = self._extract_used_edges()
+        self.pairs = self._convert_edges_to_pairs(used_edges)
+
+    def _initialize_graphs(self):
+        """
+        Initializes the capacity and residual graphs for the bipartite graph.
+        Each edge is initialized with capacity 1.
+
+        Returns:
+            tuple: Two lists of dictionaries representing the capacity and residual 
+                   graphs, respectively.
+        """
+        n = self.G.n
+        capacity = [dict() for _ in range(n)]
+        residual = [dict() for _ in range(n)]
+        for u in range(n):
+            for v, cap in self.G.adj_list[u].items():
+                capacity[u][v] = cap
+                residual[u][v] = cap
+                if u not in residual[v]:
+                    residual[v][u] = 0
+        return capacity, residual
+
+    def _bfs_find_path(self):
+        """
+        Performs a breadth-first search on the residual graph to find an augmenting path 
+        from the source to the sink.
+
+        Returns:
+            list or None: A list of node indices representing the augmenting path if found;
+                          otherwise, None.
+        """
+        visited = [False] * self.G.n
+        parent = [-1] * self.G.n
+
+        queue = deque([self.source])
+        visited[self.source] = True
+
         while queue:
             u = queue.popleft()
-            for v in range(n):
-                if not visited[v] and residual[u][v] > 0:
+            for v in self.residual[u]:
+                if self.residual[u][v] > 0 and not visited[v]:
                     visited[v] = True
                     parent[v] = u
+                    if v == self.sink:
+                        return self._reconstruct_path(parent)
                     queue.append(v)
-                    if v == sink:
-                        # We have reached the sink; we can reconstruct the path
-                        return self.build_path(parent, source, sink), parent
-        return None, parent
-    
-    def build_path(self, parent, source, sink):
+        return None
+
+    def _reconstruct_path(self, parent):
         """
-        Reconstructs the path from source to sink using the parent array.
-        Returns the list of edges [(u, v), ...].
+        Reconstructs the augmenting path from the source to the sink using parent pointers.
+
+        Args:
+            parent (list): List of parent pointers for each node in the graph.
+
+        Returns:
+            list: The augmenting path as a list of node indices.
         """
         path = []
-        v = sink
-        while v != source:
-            u = parent[v]
-            path.insert(0, (u, v))
-            v = u
+        cur = self.sink
+        while cur != self.source:
+            path.append(cur)
+            cur = parent[cur]
+        path.append(self.source)
+        path.reverse()
         return path
+
+    def _update_flow(self, path):
+        """
+        Updates the residual graph along the given augmenting path by reducing the capacity 
+        in the forward direction and increasing it in the reverse direction.
+
+        Args:
+            path (list): A list of node indices representing the augmenting path.
+        """
+        flow = min(self.residual[path[i]][path[i+1]] for i in range(len(path) - 1))
+        for i in range(len(path) - 1):
+            u, v = path[i], path[i+1]
+            self.residual[u][v] -= flow
+            self.residual[v][u] += flow
+
+    def _extract_used_edges(self):
+        """
+        Extracts edges from the original graph that have been fully saturated (i.e., used 
+        in the matching). Edges directly connected to the source or sink are ignored.
+
+        Returns:
+            list: A list of tuples (u, v) representing edges that are part of the matching.
+        """
+        used_edges = []
+        for u in range(self.G.n):
+            if u in (self.source, self.sink):
+                continue
+            for v in self.capacity[u]:
+                if v in (self.source, self.sink):
+                    continue
+                if self.capacity[u][v] == 1 and self.residual[u][v] == 0:
+                    used_edges.append((u, v))
+        return used_edges
+
+    def _convert_edges_to_pairs(self, used_edges):
+        """
+        Converts saturated edges into corresponding grid cell pairs using the mapping 
+        stored in 'G.id_cell'.
+
+        Args:
+            used_edges (list): List of tuples (u, v) representing saturated edges.
+
+        Returns:
+            list: List of tuples ((i1, j1), (i2, j2)) representing matching pairs of cells.
+        """
+        pairs = []
+        for u, v in used_edges:
+            cell_u = cell_v = None
+            for (coords, index) in self.G.id_cell:
+                if index == u:
+                    cell_u = coords
+                elif index == v:
+                    cell_v = coords
+                if cell_u is not None and cell_v is not None:
+                    break
+            if cell_u and cell_v:
+                pairs.append((cell_u, cell_v))
+        return pairs
+
+# ------------------------------------------------------------------
+# Hungarian Method
+# ------------------------------------------------------------------
+
+class SolverHungarian(Solver):
+    """
+    Solver that uses the 'Hungarian' (Munkres) class
+    to find a matching that minimizes the sum of |val1 - val2|.
+    """
+
+    def __init__(self, grid):
+        super().__init__(grid)
     
     def run(self):
         """
-        This method runs the algorithm to solve the problem.
-
-        Returns max_flox (int) which is the maximum flow found associated to graph problem.
-        The best pair list is stocked in self.pairs().
+        1. Split the grid into two sets: A (i+j even) and B (i+j odd)
+        2. Construct the cost matrix cost_matrix (of size len(A) x len(B)).
+           - cost_matrix[a, b] = |valA - valB| if (a, b) are 'adjacent' and color allowed
+           - or a very large number otherwise.
+        3. Call the Hungarian(cost_matrix) class to solve the problem.
+        4. Retrieve the assignment row->col, reconstruct the pairs (cellA, cellB).
+        5. Store the result in self.pairs (so that the __str__ method and the parent score() method can display it).
         """
-        grid_graph = BipartiteGraph(self.grid)
+        # Split the grid in two sets : A (i+j even) and B (i+j odd)
+        A = []
+        B = []
+        for i in range(self.grid.n):
+            for j in range(self.grid.m):
+                if self.grid.is_forbidden(i, j):
+                    continue
+                if (i + j) % 2 == 0:
+                    A.append((i, j))
+                else:
+                    B.append((i, j))
 
-        source = grid_graph.n - 2
-        sink = grid_graph.n - 1
+        nA = len(A)
+        nB = len(B)
 
-        residual = [row[:] for row in grid_graph.adj_matrix]
-        max_flow = 0
+        # -- 2) Construct the cost matrix
+        BIG_COST = 10**9
+        cost_matrix = np.zeros((nA, nB), dtype=np.float64)
 
-        # Use BFS to find an augmenting path
-        while True:
-            path, parent = self.find_path_BFS(residual, source, sink)
-            if path is None:
-                break
-            flow = 1  # Unit capacity
-            v = sink
-            while v != source:
-                u = parent[v]
-                residual[u][v] -= flow
-                residual[v][u] += flow
-                v = u
-            max_flow += flow
+        for iA, cellA in enumerate(A):
+            (rA, cA) = cellA
+            valA = self.grid.value[rA][cA]
+            for iB, cellB in enumerate(B):
+                (rB, cB) = cellB
+                valB = self.grid.value[rB][cB]
+                if self._are_adjacent(cellA, cellB) and self._valid_colors(self.grid, cellA, cellB):
+                    cost_matrix[iA, iB] = abs(valA - valB)
+                else:
+                    cost_matrix[iA, iB] = BIG_COST
 
-        # Extract pairs from the residual matrix
-        # Iterate over the vertices corresponding to cells (0 to grid.n*grid.m - 1)
-        for u in range(grid_graph.n - 2):  # excluding source and sink
-            # Consider only the vertices of the left part
-            # Here, we assume that grid_graph.id_cell[u][0] gives the cell coordinate and
-            # that (i+j) even indicates the left part.
-            cell_u = grid_graph.id_cell[u][0]
-            if (cell_u[0] + cell_u[1]) % 2 == 0:  # left part
-                # For each neighbor v of u
-                for v in range(grid_graph.n - 2):
-                    # Check that we have an initial edge and that this edge has been saturated
-                    if grid_graph.adj_matrix[u][v] == 1 and residual[u][v] == 0:
-                        cell_v = grid_graph.id_cell[v][0]
-                        self.pairs.append((cell_u, cell_v))
-                        break  # Each left cell can be paired with only one cell
+        # -- 3) Using the Hungarian() class
+        hungarian_solver = Hungarian(cost_matrix, is_profit_matrix=False)
+        hungarian_solver.calculate()  
+        
+        # -- 4) Reconstruct the pair list.
+        pairs = []
+        for (rowA, colB) in hungarian_solver.get_results():
+            if rowA < nA and colB < nB:
+                cost_value = cost_matrix[rowA, colB]
+                # If it's the BIG_COST, it means that the pair is not actually matched.
+                if cost_value < BIG_COST:
+                    cell_left = A[rowA]
+                    cell_right = B[colB]
+                    pairs.append((cell_left, cell_right))
 
-        return max_flow
+        self.pairs = pairs
+
+    # Insofar as we use an implementation of a GitHub Khan-Munkres algortihm, we can't use the all_pairs()
+    # method of the Grid class. Therefore, both small methods below enable to represent the conditions of 
+    # the problem again.
+
+    def _are_adjacent(self, cellA, cellB):
+        """
+        Returns True if two cell are adjacent and False otherwise.
+        """
+        (iA, jA) = cellA
+        (iB, jB) = cellB
+        dist = abs(iA - iB) + abs(jA - jB)
+        return dist == 1
+    
+    def _valid_colors(self, grid, cellA, cellB):
+        """
+        This method returns True if a matching between two pair is legal, 
+        ie, it respects the color rules, and False otherwise.
+        """
+        (i1, j1) = cellA
+        (i2, j2) = cellB
+        c1 = grid.color[i1][j1]
+        c2 = grid.color[i2][j2]
+
+        allowed = {
+            0: [0,1,2,3],  # white
+            1: [0,1,2],    # red
+            2: [0,1,2],    # blue
+            3: [0,3],      # green
+            4: [],         # black
+        }
+
+        if c2 in allowed[c1] and c1 in allowed[c2]:
+            return True
+        return False
+
+

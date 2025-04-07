@@ -39,11 +39,6 @@ class Grid():
             The grid cells values. Default is empty (then the grid is created with each cell having value 1).
         
         The object created has an attribute colors_list: list[char], which is the mapping between the value of self.color[i][j] and the corresponding color
-
-        Other items:
-        ------------
-        self.mark : list[list[bool]]
-            Allow to pin a cell as True or False to moove in the grid with a memory.
         """
         self.n = n
         self.m = m
@@ -54,8 +49,6 @@ class Grid():
             value = [[1 for j in range(m)] for i in range(n)]            
         self.value = value
         self.colors_list = ['w', 'r', 'b', 'g', 'k', 'X']
-        self.coordinates = [[(i,j) for j in range(m)] for i in range(n)]
-        self.mark = [[False for j in range(m)] for i in range(n)]
 
     def __str__(self): 
         """
@@ -86,17 +79,13 @@ class Grid():
             2 -> blue,
             3 -> green,
             4 -> black.
-        - Cells with value 5 (forbidden cells) are drawn with the background 
-        (here white) but an 'X' is overlaid to indicate that the cell is forbidden.
         """
         import matplotlib.pyplot as plt
         import numpy as np
         from matplotlib.colors import ListedColormap
 
-        print(self.color)
-
         # Define a colormap for the allowed color codes.
-        cmap = ListedColormap(['white', 'red', 'blue', 'green', 'black'])
+        cmap = ListedColormap(['white', 'red', 'blue', '#00ff00', 'black'])
 
         fig, ax = plt.subplots()
         # Use imshow to display the grid matrix.
@@ -113,6 +102,10 @@ class Grid():
         # Optionally hide major tick labels.
         ax.set_xticks([])
         ax.set_yticks([])
+
+        for i in range(self.n):
+            for j in range(self.m):
+                ax.text(j, i, str(self.value[i][j]), ha='center', va='center', color='black')
         
         plt.show()
 
@@ -168,15 +161,15 @@ class Grid():
         output = []
         if self.is_forbidden(i,j) == False:
                     if i!=n-1 and j!=m-1:
-                        if self.color[i][j]==self.color[i][j+1] or (self.color[i][j]==0 and self.is_forbidden(i,j+1)==False) or self.color[i][j+1]==0:
+                        if ((self.color[i][j] in [0,1,2] and self.color[i][j+1] in [0,1,2]) or (self.color[i][j] in [0,3] and self.color[i][j+1] in [0,3])) and not self.is_forbidden(i,j+1):
                             output.append(((i,j),(i,j+1)))
-                        if self.color[i][j]==self.color[i+1][j] or (self.color[i][j]==0 and self.is_forbidden(i+1,j)==False) or self.color[i+1][j]==0:
+                        if ((self.color[i][j] in [0,1,2] and self.color[i+1][j] in [0,1,2]) or (self.color[i][j] in [0,3] and self.color[i+1][j] in [0,3])) and not self.is_forbidden(i+1,j):
                             output.append(((i,j),(i+1,j)))
                     elif i==n-1 and j!=m-1:
-                        if self.color[i][j]==self.color[i][j+1] or (self.color[i][j]==0 and self.is_forbidden(i,j+1)==False) or self.color[i][j+1]==0:
+                        if ((self.color[i][j] in [0,1,2] and self.color[i][j+1] in [0,1,2]) or (self.color[i][j] in [0,3] and self.color[i][j+1] in [0,3])) and not self.is_forbidden(i,j+1):
                             output.append(((i,j),(i,j+1)))
                     elif i!=n-1 and j==m-1:
-                        if self.color[i][j]==self.color[i+1][j] or (self.color[i][j]==0 and self.is_forbidden(i+1,j)==False) or self.color[i+1][j]==0:
+                        if ((self.color[i][j] in [0,1,2] and self.color[i+1][j] in [0,1,2]) or (self.color[i][j] in [0,3] and self.color[i+1][j] in [0,3])) and not self.is_forbidden(i+1,j):
                             output.append(((i,j),(i+1,j)))
         return output
 
@@ -235,10 +228,14 @@ class Grid():
                     line_value = list(map(int, file.readline().split()))
                     if len(line_value) != m: 
                         raise Exception("Format incorrect")
-                    print(line_value)
                     value[i_line] = line_value
             else:
                 value = []
 
             grid = Grid(n, m, color, value)
         return grid
+
+
+if __name__ == "__main__":
+    g = Grid(2, 3, color=[[0, 4, 3], [2, 1, 0]])
+    g.plot()
